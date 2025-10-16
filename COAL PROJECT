@@ -1,0 +1,409 @@
+;==========================================================
+; Project: Medicine Stock & Expiry Management System
+; Language: MASM (Irvine32.inc)
+; Members:
+;   - Hammad: Core Logic, Input, Add/Delete
+;   - Taha: Output, Expiry, Search, Exit
+;==========================================================
+
+include Irvine32.inc
+
+.data
+;--------------------[ Common Messages ]--------------------
+menuMsg     BYTE 0dh,0ah,
+             "===== Medicine Stock Management =====",0dh,0ah,
+             "1. Add Medicine",0dh,0ah,
+             "2. View Medicines",0dh,0ah,
+             "3. Check Expired",0dh,0ah,
+             "4. Search Medicine",0dh,0ah,
+             "5. Delete Medicine",0dh,0ah,
+             "6. Exit",0dh,0ah,
+             "Enter your choice: ",0
+
+addMsg      BYTE "Enter Medicine Name: ",0
+qtyMsg      BYTE "Enter Quantity: ",0
+expMsg      BYTE "Enter Expiry Month (1-12): ",0
+viewMsg     BYTE "=== Current Medicines ===",0
+expiredMsg  BYTE "=== Expired Medicines ===",0
+searchMsg   BYTE "Enter medicine name to search: ",0
+deleteMsg   BYTE "Enter medicine name to delete: ",0
+delSuccess  BYTE "Medicine deleted successfully.",0
+notFoundMsg BYTE "Medicine not found!",0
+fullMsg     BYTE "Stock list full!",0
+noDataMsg   BYTE "No records found!",0
+exitMsg     BYTE "Exiting system...",0
+invalidMsg  BYTE "Invalid input. Try again!",0
+currMsg     BYTE "Enter current month (1-12): ",0
+qtyLabel    BYTE "  Qty: ",0
+expLabel    BYTE "  Exp: ",0
+newline     BYTE 0dh,0ah,0
+
+maxRecords  EQU 10
+nameSize    EQU 20
+
+;--------------------[ Data Arrays ]------------------------
+medicineNames BYTE maxRecords DUP(nameSize DUP(?))
+quantities    DWORD maxRecords DUP(?)
+expiryMonths  DWORD maxRecords DUP(?)
+recordCount   DWORD 0
+currMonth     DWORD ?
+choice        DWORD ?
+searchName    BYTE nameSize DUP(?)
+
+;==========================================================
+.code
+main PROC
+    call Clrscr
+
+; Ask for current month dynamically
+setMonth:
+    mov edx, OFFSET currMsg
+    call WriteString
+    call ReadInt
+    cmp eax, 1
+    jb setMonth
+    cmp eax, 12
+    ja setMonth
+    mov currMonth, eax
+    call Clrscr
+
+;--------------------[ Main Menu Loop ]---------------------
+menuLoop:
+    mov edx, OFFSET menuMsg
+    call WriteString
+    call ReadInt
+    mov choice, eax
+
+    cmp eax, 1
+    je addMedicine
+    cmp eax, 2
+    je viewMedicines
+    cmp eax, 3
+    je checkExpired
+    cmp eax, 4
+    je searchMedicine
+    cmp eax, 5
+    je deleteMedicine
+    cmp eax, 6
+    je exitProg
+
+    call InvalidInput
+    jmp menuLoop
+
+;==========================================================
+; PROC: addMedicine  (Hammad)
+;==========================================================
+addMedicine PROC
+    mov eax, recordCount
+    cmp eax, maxRecords
+    jae fullList
+
+    mov ecx, eax                ; ecx = record index
+
+    mov edx, OFFSET addMsg
+    call WriteString
+    mov eax, ecx
+    imul eax, nameSize
+    lea edi, medicineNames[eax]
+    mov edx, edi
+    mov ecx, nameSize
+    call ReadString
+
+getQty:
+    mov edx, OFFSET qtyMsg
+    call WriteString
+    call ReadInt
+    cmp eax, 0
+    jle invalidQty
+    mov quantities[ecx*4], eax
+    jmp getExpiry
+
+invalidQty:
+    call InvalidInput
+    jmp getQty
+
+getExpiry:
+    mov edx, OFFSET expMsg
+    call WriteString
+    call ReadInt
+    cmp eax, 1
+    jb invalidExp
+    cmp eax, 12
+    ja invalidExp
+    mov expiryMonths[ecx*4], eax
+    jmp addDone
+
+invalidExp:
+    call InvalidInput
+    jmp getExpiry
+
+addDone:
+    inc recordCount
+    call Clrscr
+    jmp menuLoop
+
+fullList:
+    mov edx, OFFSET fullMsg
+    call WriteString
+    call Crlf
+    jmp menuLoop
+addMedicine ENDP
+
+;==========================================================
+; PROC: viewMedicines  (Taha)
+;==========================================================
+viewMedicines PROC
+    mov eax, recordCount
+    cmp eax, 0
+    je noDataView
+
+    call Clrscr
+    mov edx, OFFSET viewMsg
+    call WriteString
+    call Crlf
+
+    mov ecx, recordCount
+    mov esi, 0
+
+viewLoop:
+    mov eax, esi
+    imul eax, nameSize
+    lea edx, medicineNames[eax]
+    call WriteString
+
+    mov edx, OFFSET qtyLabel
+    call WriteString
+    mov eax, quantities[esi*4]
+    call WriteInt
+
+    mov edx, OFFSET expLabel
+    call WriteString
+    mov eax, expiryMonths[esi*4]
+    call WriteInt
+
+    call Crlf
+    inc esi
+    loop viewLoop
+
+    call Crlf
+    jmp menuLoop
+
+noDataView:
+    call PrintNoData
+    jmp menuLoop
+viewMedicines ENDP
+
+;==========================================================
+; PROC: checkExpired  (Taha)
+;==========================================================
+checkExpired PROC
+    mov eax, recordCount
+    cmp eax, 0
+    je noDataExp
+
+    call Clrscr
+    mov edx, OFFSET expiredMsg
+    call WriteString
+    call Crlf
+
+    mov ecx, recordCount
+    mov esi, 0
+    mov ebx, 0
+
+expLoop:
+    mov eax, expiryMonths[esi*4]
+    cmp eax, currMonth
+    jb printExpired
+skipPrint:
+    inc esi
+    loop expLoop
+    cmp ebx, 0
+    jne afterExp
+    call PrintNoData
+afterExp:
+    jmp menuLoop
+
+printExpired:
+    mov eax, esi
+    imul eax, nameSize
+    lea edx, medicineNames[eax]
+    call WriteString
+    mov edx, OFFSET expLabel
+    call WriteString
+    mov eax, expiryMonths[esi*4]
+    call WriteInt
+    call Crlf
+    inc ebx
+    jmp skipPrint
+checkExpired ENDP
+
+;==========================================================
+; PROC: searchMedicine  (Taha)
+;==========================================================
+searchMedicine PROC
+    mov eax, recordCount
+    cmp eax, 0
+    je noDataSearch
+
+    mov edx, OFFSET searchMsg
+    call WriteString
+    mov edx, OFFSET searchName
+    mov ecx, nameSize
+    call ReadString
+
+    mov ecx, recordCount
+    mov esi, 0
+    mov ebx, 0
+
+searchLoop:
+    mov eax, esi
+    imul eax, nameSize
+    lea edi, medicineNames[eax]
+    mov edx, OFFSET searchName
+    mov ecx, nameSize
+    call Str_compare
+    cmp eax, 0
+    jne notFoundYet
+
+    mov edx, edi
+    call WriteString
+    mov edx, OFFSET qtyLabel
+    call WriteString
+    mov eax, quantities[esi*4]
+    call WriteInt
+    mov edx, OFFSET expLabel
+    call WriteString
+    mov eax, expiryMonths[esi*4]
+    call WriteInt
+    call Crlf
+    mov ebx, 1
+    jmp doneSearch
+
+notFoundYet:
+    inc esi
+    loop searchLoop
+
+doneSearch:
+    cmp ebx, 1
+    je endSearch
+    mov edx, OFFSET notFoundMsg
+    call WriteString
+    call Crlf
+endSearch:
+    jmp menuLoop
+
+noDataSearch:
+    call PrintNoData
+    jmp menuLoop
+searchMedicine ENDP
+
+;==========================================================
+; PROC: deleteMedicine  (Hammad)
+;==========================================================
+deleteMedicine PROC
+    mov eax, recordCount
+    cmp eax, 0
+    je noDataDel
+
+    mov edx, OFFSET deleteMsg
+    call WriteString
+    mov edx, OFFSET searchName
+    mov ecx, nameSize
+    call ReadString
+
+    mov ecx, recordCount
+    mov esi, 0
+    mov ebx, -1
+
+deleteLoop:
+    mov eax, esi
+    imul eax, nameSize
+    lea edi, medicineNames[eax]
+    mov edx, OFFSET searchName
+    mov ecx, nameSize
+    call Str_compare
+    cmp eax, 0
+    jne nextDel
+    mov ebx, esi
+    jmp foundDel
+nextDel:
+    inc esi
+    loop deleteLoop
+
+    cmp ebx, -1
+    je notFoundDel
+
+foundDel:
+    ; Shift records up
+    mov ecx, recordCount
+    dec ecx
+    mov esi, ebx
+shiftLoop:
+    cmp esi, ecx
+    jae doneDel
+    mov eax, esi
+    imul eax, nameSize
+    lea edi, medicineNames[eax]
+    mov ebx, esi
+    inc ebx
+    mov edx, ebx
+    imul edx, nameSize
+    lea esi, medicineNames[edx]
+    mov ecx, nameSize
+    call Str_copy
+
+    mov eax, ebx
+    mov eax, quantities[eax*4]
+    mov quantities[(ebx-1)*4], eax
+    mov eax, expiryMonths[ebx*4]
+    mov expiryMonths[(ebx-1)*4], eax
+    mov esi, ebx
+    jmp shiftLoop
+
+doneDel:
+    dec recordCount
+    mov edx, OFFSET delSuccess
+    call WriteString
+    call Crlf
+    jmp menuLoop
+
+notFoundDel:
+    mov edx, OFFSET notFoundMsg
+    call WriteString
+    call Crlf
+    jmp menuLoop
+
+noDataDel:
+    call PrintNoData
+    jmp menuLoop
+deleteMedicine ENDP
+
+;==========================================================
+; PROC: exitProg  (Taha)
+;==========================================================
+exitProg PROC
+    call Clrscr
+    mov edx, OFFSET exitMsg
+    call WriteString
+    call Crlf
+    exit
+exitProg ENDP
+
+;==========================================================
+; Helper Procedures
+;==========================================================
+InvalidInput PROC
+    mov edx, OFFSET invalidMsg
+    call WriteString
+    call Crlf
+    ret
+InvalidInput ENDP
+
+PrintNoData PROC
+    mov edx, OFFSET noDataMsg
+    call WriteString
+    call Crlf
+    ret
+PrintNoData ENDP
+
+END main
