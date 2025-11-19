@@ -5,7 +5,7 @@
 
 ## 📘 Overview  
 The **Medicine Stock & Expiry Management System** is an assembly-level application developed using **MASM (Microsoft Macro Assembler)** and the **Irvine32 library**.  
-It provides a streamlined way to manage pharmaceutical stock data, record quantities, and identify expired medicines — all at the machine-level programming layer.
+It provides a streamlined way to manage pharmaceutical stock data, record quantities, and identify expired medicines - all at the machine-level programming layer.
 
 This project demonstrates low-level data management, memory handling, and user interaction in assembly language, aligned with **Computer Organization and Assembly Language (COAL)** course objectives.
 
@@ -38,4 +38,4 @@ This project demonstrates low-level data management, memory handling, and user i
 
   
 **The beauty of low-level programming lies in mastering the machine itself.”
-— Assembly Developer’s Ethos**
+- Assembly Developer’s Ethos**
