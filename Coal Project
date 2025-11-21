@@ -1,0 +1,386 @@
+; MedicineMgmt.asm
+; Medicine Stock and Expiry Management System
+; MASM + Irvine32.inc
+INCLUDE Irvine32.inc
+INCLUDELIB Irvine32.lib
+
+MAX_REC      EQU 10
+NAME_LEN     EQU 32        ; bytes per name (including zero terminator)
+
+.data
+menuMsg      BYTE    "====== Medicine Stock & Expiry Management ======",0dh,0ah,0
+menuOpt      BYTE    "1- Add Medicine",0dh,0ah, \
+                   "2- View All Medicines",0dh,0ah, \
+                   "3- Check Expired Medicines",0dh,0ah, \
+                   "4- Delete Medicine",0dh,0ah, \
+                   "5- Clear All Records",0dh,0ah, \
+                   "6- Exit",0dh,0ah,0
+promptChoice BYTE    "Enter choice (1-6): ",0
+promptName   BYTE    "Enter medicine name: ",0
+promptQty    BYTE    "Enter quantity (integer): ",0
+promptExp    BYTE    "Enter expiry month (1-12): ",0
+promptCurMon BYTE    "Enter current month (1-12): ",0
+promptIndex  BYTE    "Enter record index (0-9): ",0
+msgFull      BYTE    "No free slots available. Maximum records reached.",0dh,0ah,0
+msgInvalid   BYTE    "Invalid input.",0dh,0ah,0
+msgNotFound  BYTE    "No record found at that index.",0dh,0ah,0
+msgDeleted   BYTE    "Record deleted.",0dh,0ah,0
+msgCleared   BYTE    "All records cleared.",0dh,0ah,0
+newline      BYTE    0dh,0ah,0
+
+labelIndex   BYTE    "Index: ",0
+labelName    BYTE    "Name: ",0
+labelQty     BYTE    "Quantity: ",0
+labelExpiry  BYTE    "Expiry month: ",0
+labelExpired BYTE    "Expired Record Index: ",0
+
+; Data storage: parallel arrays
+names        BYTE    MAX_REC * NAME_LEN DUP(0)    ; 10 * 32 bytes
+quantities   DWORD   MAX_REC DUP(0)               ; 10 dwords
+expiries     BYTE    MAX_REC DUP(0)               ; expiry month 1..12
+flags        BYTE    MAX_REC DUP(0)               ; 0 = free, 1 = occupied
+
+.code
+
+; ---------------------------
+; AddMedicine Procedure
+; Member: Hammad
+; Function: Adds a new medicine record to the first free slot
+; ---------------------------
+AddMedicine PROC
+    pushad
+
+    ; find first free slot (index in ESI), or set ESI = -1 if none
+    mov esi, 0
+    mov ecx, MAX_REC
+find_free:
+    mov al, flags[esi]
+    cmp al, 0
+    je found_free
+    inc esi
+    loop find_free
+    ; if ECX reached 0 and none free:
+    mov al, flags[esi]    ; check last
+    cmp al, 0
+    jne no_free
+
+found_free:
+    ; ESI is index of free slot
+    ; Read medicine name into names + ESI*NAME_LEN
+    mov edx, OFFSET promptName
+    call WriteString
+
+    ; compute address of the name buffer
+    lea edi, names
+    mov eax, esi
+    imul eax, NAME_LEN        ; eax = index * NAME_LEN
+    add edi, eax              ; edi -> buffer
+    mov edx, edi
+    mov ecx, NAME_LEN-1       ; reserve 1 for null
+    call ReadString           ; uses EDX, ECX
+
+    ; Read quantity
+    mov edx, OFFSET promptQty
+    call WriteString
+    call ReadInt              ; returns value in EAX
+    mov ebx, eax
+    ; store into quantities[esi]
+    mov eax, esi
+    imul eax, 4               ; offset for dword array
+    mov [quantities + eax], ebx
+
+    ; Read expiry month
+    mov edx, OFFSET promptExp
+    call WriteString
+    call ReadInt              ; expiry in EAX
+    cmp eax, 1
+    jl bad_expiry
+    cmp eax, 12
+    jg bad_expiry
+    ; store expiry byte
+    mov [expiries + esi], al
+
+    ; set flag occupied
+    mov byte ptr [flags + esi], 1
+    jmp add_done
+
+bad_expiry:
+    mov edx, OFFSET msgInvalid
+    call WriteString
+    ; do not set flag; keep slot free
+    jmp add_done
+
+no_free:
+    mov edx, OFFSET msgFull
+    call WriteString
+
+add_done:
+    popad
+    ret
+AddMedicine ENDP
+
+; ---------------------------
+; ViewAll Procedure
+; Member: Hammad
+; Function: Displays all occupied medicine records
+; ---------------------------
+ViewAll PROC
+    pushad
+    mov esi, 0
+    mov ecx, MAX_REC
+
+view_loop:
+    mov al, flags[esi]
+    cmp al, 1
+    jne v_next
+
+    ; print blank line
+    mov edx, OFFSET newline
+    call WriteString
+
+    ; Index
+    mov edx, OFFSET labelIndex
+    call WriteString
+    mov eax, esi
+    call WriteInt
+    call Crlf
+
+    ; Name
+    mov edx, OFFSET labelName
+    call WriteString
+    ; name address
+    lea edi, names
+    mov eax, esi
+    imul eax, NAME_LEN
+    add edi, eax
+    mov edx, edi
+    call WriteString
+    call Crlf
+
+    ; Quantity
+    mov edx, OFFSET labelQty
+    call WriteString
+    mov eax, esi
+    imul eax, 4
+    mov eax, [quantities + eax]
+    call WriteInt
+    call Crlf
+
+    ; Expiry
+    mov edx, OFFSET labelExpiry
+    call WriteString
+    movzx eax, byte ptr [expiries + esi]
+    call WriteInt
+    call Crlf
+
+v_next:
+    inc esi
+    cmp esi, MAX_REC
+    jl view_loop
+
+    popad
+    ret
+ViewAll ENDP
+
+; ---------------------------
+;CheckExpired Procedure
+; Member: Hammad
+; Function: Checks for medicines expired before current month
+; ---------------------------
+CheckExpired PROC
+    pushad
+    mov edx, OFFSET promptCurMon
+    call WriteString
+    call ReadInt
+    mov ebx, eax             ; current month
+
+    cmp ebx, 1
+    jl ce_invalid
+    cmp ebx, 12
+    jg ce_invalid
+
+    mov esi, 0
+
+ce_loop:
+    mov al, flags[esi]
+    cmp al, 1
+    jne ce_next
+
+    movzx eax, byte ptr [expiries + esi]
+    cmp eax, ebx
+    jge ce_next    ; expiry >= current month -> not expired
+    ; expired -> print record
+    mov edx, OFFSET newline
+    call WriteString
+    mov edx, OFFSET labelExpired
+    call WriteString
+    mov eax, esi
+    call WriteInt
+    call Crlf
+
+    mov edx, OFFSET labelName
+    call WriteString
+    lea edi, names
+    mov eax, esi
+    imul eax, NAME_LEN
+    add edi, eax
+    mov edx, edi
+    call WriteString
+    call Crlf
+
+    mov edx, OFFSET labelExpiry
+    call WriteString
+    movzx eax, byte ptr [expiries + esi]
+    call WriteInt
+    call Crlf
+
+ce_next:
+    inc esi
+    cmp esi, MAX_REC
+    jl ce_loop
+
+    popad
+    ret
+
+ce_invalid:
+    mov edx, OFFSET msgInvalid
+    call WriteString
+    popad
+    ret
+CheckExpired ENDP
+
+; ---------------------------
+;  DeleteMedicine Procedure
+; Member: taha
+; Function: Deletes medicine record at a given index
+; ---------------------------
+DeleteMedicine PROC
+    pushad
+    mov edx, OFFSET promptIndex
+    call WriteString
+    call ReadInt
+    mov ebx, eax
+    cmp ebx, 0
+    jl del_bad
+    cmp ebx, MAX_REC-1
+    jg del_bad
+
+    mov al, [flags + ebx]
+    cmp al, 1
+    jne del_notfound
+
+    ; clear record
+    mov byte ptr [flags + ebx], 0
+    mov dword ptr [quantities + ebx*4], 0
+    mov byte ptr [expiries + ebx], 0
+    mov eax, ebx
+imul eax, NAME_LEN
+mov byte ptr [names + eax], 0
+    mov edx, OFFSET msgDeleted
+    call WriteString
+    jmp del_done
+
+del_notfound:
+    mov edx, OFFSET msgNotFound
+    call WriteString
+    jmp del_done
+
+del_bad:
+    mov edx, OFFSET msgInvalid
+    call WriteString
+
+del_done:
+    popad
+    ret
+DeleteMedicine ENDP
+
+; ---------------------------
+; ClearAll Procedure
+; Member: taha
+; Function: Clears all medicine records
+; ---------------------------
+ClearAll PROC
+    pushad
+    xor esi, esi
+
+clear_loop:
+    mov byte ptr [flags + esi], 0
+    mov dword ptr [quantities + esi*4], 0
+   mov eax, esi
+imul eax, NAME_LEN
+mov byte ptr [names + eax], 0
+
+    mov eax, ebx
+imul eax, NAME_LEN       ; eax = ebx * NAME_LEN
+mov byte ptr [names + eax], 0
+
+    inc esi
+    cmp esi, MAX_REC
+    jl clear_loop
+
+    mov edx, OFFSET msgCleared
+    call WriteString
+    popad
+    ret
+ClearAll ENDP
+
+; ---------------------------
+; Main Procedure
+; Member: Taha
+; Function: Menu interface and program loop
+; ---------------------------
+main PROC
+    ; program loop
+main_loop:
+    mov edx, OFFSET menuMsg
+    call WriteString
+    mov edx, OFFSET menuOpt
+    call WriteString
+
+    mov edx, OFFSET promptChoice
+    call WriteString
+    call ReadInt
+
+    cmp eax, 1
+    je do_add
+    cmp eax, 2
+    je do_view
+    cmp eax, 3
+    je do_check
+    cmp eax, 4
+    je do_delete
+    cmp eax, 5
+    je do_clear
+    cmp eax, 6
+    je do_exit
+
+    mov edx, OFFSET msgInvalid
+    call WriteString
+    jmp main_loop
+
+do_add:
+    call AddMedicine
+    jmp main_loop
+
+do_view:
+    call ViewAll
+    jmp main_loop
+
+do_check:
+    call CheckExpired
+    jmp main_loop
+
+do_delete:
+    call DeleteMedicine
+    jmp main_loop
+
+do_clear:
+    call ClearAll
+    jmp main_loop
+
+do_exit:
+    invoke ExitProcess, 0
+
+main ENDP
+
+END main
