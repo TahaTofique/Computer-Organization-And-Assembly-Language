@@ -1,6 +1,4 @@
-; MedicineMgmt.asm
-; Medicine Stock and Expiry Management System
-; MASM + Irvine32.inc
+
 INCLUDE Irvine32.inc
 INCLUDELIB Irvine32.lib
 
@@ -301,18 +299,22 @@ DeleteMedicine ENDP
 ; ---------------------------
 ClearAll PROC
     pushad
-    xor esi, esi
+    xor esi, esi                ; record index
 
 clear_loop:
+    ; clear flags and quantity
     mov byte ptr [flags + esi], 0
     mov dword ptr [quantities + esi*4], 0
-   mov eax, esi
-imul eax, NAME_LEN
-mov byte ptr [names + eax], 0
+    mov byte ptr [expiries + esi], 0
 
-    mov eax, ebx
-imul eax, NAME_LEN       ; eax = ebx * NAME_LEN
-mov byte ptr [names + eax], 0
+    ; clear full name
+    lea edi, names
+    mov eax, esi
+    imul eax, NAME_LEN
+    add edi, eax               ; edi -> start of name
+    mov ecx, NAME_LEN
+    xor al, al
+    rep stosb                  ; fill NAME_LEN bytes with 0
 
     inc esi
     cmp esi, MAX_REC
@@ -323,6 +325,7 @@ mov byte ptr [names + eax], 0
     popad
     ret
 ClearAll ENDP
+
 
 ; ---------------------------
 ; Main Procedure
