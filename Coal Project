@@ -273,9 +273,16 @@ DeleteMedicine PROC
     mov byte ptr [flags + ebx], 0
     mov dword ptr [quantities + ebx*4], 0
     mov byte ptr [expiries + ebx], 0
+
+    ; fully clear the name buffer
+    lea edi, names
     mov eax, ebx
-imul eax, NAME_LEN
-mov byte ptr [names + eax], 0
+    imul eax, NAME_LEN
+    add edi, eax
+    mov ecx, NAME_LEN
+    xor al, al
+    rep stosb
+
     mov edx, OFFSET msgDeleted
     call WriteString
     jmp del_done
