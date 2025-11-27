@@ -1,4 +1,6 @@
-
+; MedicineMgmt.asm
+; Medicine Stock and Expiry Management System
+; MASM + Irvine32.inc
 INCLUDE Irvine32.inc
 INCLUDELIB Irvine32.lib
 
